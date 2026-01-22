@@ -92,6 +92,7 @@
       top: 0;
       width: 100vw;
       height: 100vh;
+      z-index: 1;
     }
     
     .viewport-image img {
@@ -103,6 +104,7 @@
     .cursor-image {
       width: 200vw;
       height: 200vh;
+      z-index: 3;
     }
     
     .cursor-image img {
@@ -211,54 +213,35 @@
     return selectedImage;
   }
   
-  // Function to place an image
-  function placeImage(x, y) {
-    let imageFile;
-    let imageUrl;
-    let isViewImage = false;
-    
-    // Phase 1: Place all view images first (view1-10, at cursor position, no repeats)
-    if (!allViewportImagesPlaced) {
-      imageFile = getNextViewportImage();
-      if (imageFile) {
-        imageUrl = imageFile;
-        isViewImage = true;
-      } else {
-        // All view images placed, switch to img images
-        allViewportImagesPlaced = true;
-        imageFile = getRandomImagesFolderImage();
-        imageUrl = imageFile;
-        isViewImage = false;
-      }
-    } else {
-      // Phase 2: Place img images (img1-10, covering viewport, random)
-      imageFile = getRandomImagesFolderImage();
-      imageUrl = imageFile;
-      isViewImage = false;
-    }
-    
+  // Function to place a single image
+  function placeSingleImage(imageUrl, isViewImage, x, y) {
     const container = document.createElement('div');
-    // view1-10 images go at cursor, img1-10 images cover viewport
     container.className = 'image-layer ' + (isViewImage ? 'cursor-image' : 'viewport-image');
     
     const img = document.createElement('img');
     img.src = imageUrl;
-    img.alt = imageFile;
+    img.alt = imageUrl;
     
     if (isViewImage) {
       // View images: positioned at click point, centered (200vw x 200vh, so offset by 100vw and 100vh)
       const viewportWidth = window.innerWidth;
       const viewportHeight = window.innerHeight;
+      // Center the 200vw x 200vh image on the click point
       container.style.left = (x - viewportWidth) + 'px';
       container.style.top = (y - viewportHeight) + 'px';
       // Add random rotation
       const randomRotation = (Math.random() * 360) - 180; // Random angle between -180 and 180 degrees
       container.style.transform = `rotate(${randomRotation}deg)`;
+      container.style.transformOrigin = `${viewportWidth}px ${viewportHeight}px`;
     } else {
       // Img images: covers entire viewport
       container.style.left = '0';
       container.style.top = '0';
     }
+    
+    img.onload = function() {
+      // Image loaded successfully
+    };
     
     img.onerror = function() {
       console.error('Failed to load image:', imageUrl);
@@ -267,6 +250,23 @@
     
     container.appendChild(img);
     body.appendChild(container);
+  }
+  
+  // Function to place images on click
+  function placeImage(x, y) {
+    // Always place an img image (covering viewport)
+    const imgImageFile = getRandomImagesFolderImage();
+    placeSingleImage(imgImageFile, false, x, y);
+    
+    // Also place a view image if available (at cursor position)
+    if (!allViewportImagesPlaced) {
+      const viewImageFile = getNextViewportImage();
+      if (viewImageFile) {
+        placeSingleImage(viewImageFile, true, x, y);
+      } else {
+        allViewportImagesPlaced = true;
+      }
+    }
   }
   
   fileInput.addEventListener('change', function(e) {
