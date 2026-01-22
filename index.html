@@ -1,0 +1,415 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Image Background Uploader</title>
+  <style>
+    * {
+      cursor: url('cursor.png') 15 15, auto !important;
+    }
+    
+    html, body {
+      margin: 0;
+      padding: 0;
+      height: 100%;
+      width: 100%;
+      overflow: hidden;
+    }
+    
+    body {
+      background-size: cover;
+      background-position: center;
+      background-repeat: no-repeat;
+      background-color: #000;
+    }
+    
+    body.shake {
+      animation: hit-shake 0.15s steps(2) forwards;
+    }
+    
+    @keyframes hit-shake {
+      0%   { transform: translate(0, 0); }
+      20%  { transform: translate(-5px, 4px); }
+      40%  { transform: translate(4px, -5px); }
+      60%  { transform: translate(-3px, -4px); }
+      80%  { transform: translate(3px, 2px); }
+      100% { transform: translate(0, 0); }
+    }
+    
+    #upload-container {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      z-index: 10;
+      text-align: center;
+      background: rgba(255, 255, 255, 0.9);
+      padding: 30px;
+      border-radius: 10px;
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+    }
+    
+    #upload-container.hidden {
+      display: none;
+    }
+    
+    #file-input {
+      display: none;
+    }
+    
+    label {
+      display: inline-block;
+      padding: 12px 24px;
+      background: #007bff;
+      color: white;
+      border-radius: 5px;
+      font-size: 16px;
+      transition: background 0.3s;
+    }
+    
+    label:hover {
+      background: #0056b3;
+    }
+    
+    p {
+      margin: 15px 0 0 0;
+      color: #666;
+      font-size: 14px;
+    }
+    
+    .placed-image {
+      position: fixed;
+      left: 0;
+      top: 0;
+      width: 100vw;
+      height: 100vh;
+      pointer-events: none;
+      image-rendering: auto;
+      visibility: hidden;
+      z-index: 2;
+    }
+    
+    .placed-image.loaded {
+      visibility: visible;
+    }
+    
+    .placed-image img {
+      display: block;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+    
+    .cursor-image {
+      position: absolute;
+      pointer-events: none;
+      image-rendering: auto;
+      visibility: hidden;
+      z-index: 2;
+    }
+    
+    .cursor-image.loaded {
+      visibility: visible;
+    }
+    
+    .cursor-image img {
+      display: block;
+      width: 200vw;
+      height: 200vh;
+      object-fit: contain;
+      max-width: none;
+      max-height: none;
+    }
+    
+    .corner-image {
+      position: absolute;
+      left: 0;
+      top: 0;
+      pointer-events: none;
+      image-rendering: auto;
+      visibility: hidden;
+      width: 100vw;
+      height: 100vh;
+      z-index: 1;
+    }
+    
+    .corner-image.loaded {
+      visibility: visible;
+    }
+    
+    .corner-image img {
+      display: block;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+    
+    #flash-overlay {
+      position: fixed;
+      left: 0;
+      top: 0;
+      width: 100vw;
+      height: 100vh;
+      pointer-events: none;
+      z-index: 5;
+      opacity: 0;
+    }
+    
+    #flash-overlay.flash {
+      animation: glitch-flash 0.4s steps(3) forwards;
+    }
+    
+    @keyframes glitch-flash {
+      0%   { opacity: 1;  transform: translate(0, 0); }
+      8%   { opacity: 0;  transform: translate(-3px, 2px); }
+      16%  { opacity: 0.85; transform: translate(2px, -2px); }
+      24%  { opacity: 0;  transform: translate(1px, 3px); }
+      32%  { opacity: 0.6;  transform: translate(-2px, -1px); }
+      40%  { opacity: 0;  transform: translate(0, 0); }
+      55%  { opacity: 0.35; transform: translate(-1px, 2px); }
+      70%  { opacity: 0.1;  transform: translate(2px, 0); }
+      85%  { opacity: 0.15; transform: translate(-1px, -1px); }
+      100% { opacity: 0;  transform: translate(0, 0); }
+    }
+  </style>
+</head>
+<body>
+
+<div id="upload-container">
+  <label for="file-input">Choose Image</label>
+  <input type="file" id="file-input" accept="image/*">
+  <p>Upload an image to set as background</p>
+</div>
+
+<div id="flash-overlay"></div>
+
+<script>
+  const fileInput = document.getElementById('file-input');
+  const uploadContainer = document.getElementById('upload-container');
+  const body = document.body;
+  
+  // Image configuration
+  const imagesFolder = "images/";
+  const viewportFolder = "viewport/";
+  const viewportImageFiles = ["1.png", "2.png", "3.png", "4.png", "5.png", "6.png", "7.png", "8.png", "9.png", "10.png"];
+  const imagesFolderFiles = ["1.png", "2.png", "3.png", "4.png", "5.png", "6.png", "7.png", "8.png", "9.png", "10.png"];
+  // Corner → viewport file: top-left 1, top-right 2, bottom-left 3, bottom-right 4
+  const cornerViewportFiles = { tl: "1.png", tr: "2.png", bl: "3.png", br: "4.png" };
+  
+  // Track available viewport images (no repeats until all are used)
+  let availableViewportImages = [...viewportImageFiles];
+  let usedViewportImages = [];
+  let allViewportImagesPlaced = false;
+  
+  // Track available images folder images (random selection)
+  let availableImagesFolderImages = [...imagesFolderFiles];
+  let usedImagesFolderImages = [];
+  
+  let backgroundUploaded = false;
+  
+  // Function to shuffle array
+  function shuffleArray(array) {
+    const shuffled = [...array];
+    for (let i = shuffled.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+    }
+    return shuffled;
+  }
+  
+  // Function to get a random image from images folder (random selection)
+  function getRandomImagesFolderImage() {
+    if (availableImagesFolderImages.length === 0) {
+      // All images used, reshuffle and start over
+      availableImagesFolderImages.length = 0;
+      availableImagesFolderImages.push(...shuffleArray([...imagesFolderFiles]));
+      usedImagesFolderImages.length = 0;
+    }
+    
+    const randomIndex = Math.floor(Math.random() * availableImagesFolderImages.length);
+    const selectedImage = availableImagesFolderImages.splice(randomIndex, 1)[0];
+    usedImagesFolderImages.push(selectedImage);
+    
+    return selectedImage;
+  }
+  
+  // Function to get next viewport image (no repeats until all are used)
+  function getNextViewportImage() {
+    if (availableViewportImages.length === 0) {
+      // All viewport images have been placed
+      allViewportImagesPlaced = true;
+      return null;
+    }
+    
+    const randomIndex = Math.floor(Math.random() * availableViewportImages.length);
+    const selectedImage = availableViewportImages.splice(randomIndex, 1)[0];
+    usedViewportImages.push(selectedImage);
+    
+    return selectedImage;
+  }
+  
+  // Function to place an image
+  function placeImage(x, y) {
+    let imageFile;
+    let imageUrl;
+    let isViewportImage = false;
+    
+    // Phase 1: Place all viewport images first (no repeats, covering whole viewport)
+    if (!allViewportImagesPlaced) {
+      imageFile = getNextViewportImage();
+      if (imageFile) {
+        imageUrl = viewportFolder + imageFile;
+        isViewportImage = true;
+      } else {
+        // All viewport images placed, switch to images folder
+        allViewportImagesPlaced = true;
+        imageFile = getRandomImagesFolderImage();
+        imageUrl = imagesFolder + imageFile;
+        isViewportImage = false;
+      }
+    } else {
+      // Phase 2: Place images from images folder (random, at cursor position)
+      imageFile = getRandomImagesFolderImage();
+      imageUrl = imagesFolder + imageFile;
+      isViewportImage = false;
+    }
+    
+    const container = document.createElement('div');
+    container.className = isViewportImage ? 'placed-image' : 'cursor-image';
+    
+    const img = document.createElement('img');
+    img.src = imageUrl;
+    img.alt = imageFile;
+    
+    img.onload = function() {
+      if (!isViewportImage) {
+        // Position cursor image at click coordinates
+        // Images are scaled to 200% viewport (200vw x 200vh)
+        // Center the image on the click point
+        const viewportWidth = window.innerWidth;
+        const viewportHeight = window.innerHeight;
+        
+        container.style.left = (x - viewportWidth) + 'px';
+        container.style.top = (y - viewportHeight) + 'px';
+      }
+      // Show the image once it's loaded
+      container.classList.add('loaded');
+    };
+    
+    img.onerror = function() {
+      console.error('Failed to load image:', imageUrl);
+      container.remove();
+    };
+    
+    container.appendChild(img);
+    body.appendChild(container);
+  }
+  
+  function getCorner(x, y) {
+    const midX = window.innerWidth / 2;
+    const midY = window.innerHeight / 2;
+    if (y < midY) return x < midX ? 'tl' : 'tr';
+    return x < midX ? 'bl' : 'br';
+  }
+  
+  function placeCornerImage(corner) {
+    const file = cornerViewportFiles[corner];
+    const imageUrl = viewportFolder + file;
+    
+    const container = document.createElement('div');
+    container.className = 'corner-image ' + corner;
+    
+    const img = document.createElement('img');
+    img.src = imageUrl;
+    img.alt = file;
+    
+    img.onload = function() {
+      container.classList.add('loaded');
+    };
+    
+    img.onerror = function() {
+      console.error('Failed to load corner image:', imageUrl);
+      container.remove();
+    };
+    
+    container.appendChild(img);
+    body.appendChild(container);
+  }
+  
+  fileInput.addEventListener('change', function(e) {
+    const file = e.target.files[0];
+    
+    if (file && file.type.startsWith('image/')) {
+      const reader = new FileReader();
+      
+      reader.onload = function(event) {
+        const imageUrl = event.target.result;
+        body.style.backgroundImage = `url(${imageUrl})`;
+        uploadContainer.classList.add('hidden');
+        backgroundUploaded = true;
+      };
+      
+      reader.onerror = function() {
+        alert('Error reading file. Please try again.');
+      };
+      
+      reader.readAsDataURL(file);
+    } else {
+      alert('Please select a valid image file.');
+    }
+  });
+  
+  // Allow clicking the label to trigger file input
+  document.querySelector('label').addEventListener('click', function(e) {
+    e.preventDefault();
+    fileInput.click();
+  });
+  
+  const flashOverlay = document.getElementById('flash-overlay');
+  
+  function playImpactSound() {
+    // Play impact sound randomly on some clicks (e.g., 30% chance)
+    if (Math.random() < 0.3) {
+      const impactSound = new Audio('impact.wav');
+      impactSound.volume = 0.5;
+      impactSound.play().catch(err => {
+        console.log('Error playing impact sound:', err);
+      });
+    }
+  }
+  
+  function triggerFlash() {
+    flashOverlay.style.background = Math.random() < 0.5 ? 'white' : 'black';
+    flashOverlay.classList.remove('flash');
+    void flashOverlay.offsetWidth; // reflow to restart animation
+    flashOverlay.classList.add('flash');
+    setTimeout(function() { flashOverlay.classList.remove('flash'); }, 400);
+    
+    body.classList.remove('shake');
+    void body.offsetWidth;
+    body.classList.add('shake');
+    setTimeout(function() { body.classList.remove('shake'); }, 150);
+  }
+  
+  // Place images on click after background is uploaded
+  body.addEventListener('click', function(e) {
+    if (!backgroundUploaded || uploadContainer.contains(e.target)) return;
+    
+    // Enter fullscreen if not already in fullscreen
+    if (!document.fullscreenElement) {
+      document.documentElement.requestFullscreen().catch(err => {
+        console.log('Error attempting to enable fullscreen:', err);
+      });
+    }
+    
+    playImpactSound();
+    triggerFlash();
+    const x = e.clientX, y = e.clientY;
+    placeImage(x, y);
+    placeCornerImage(getCorner(x, y));
+  });
+</script>
+
+</body>
+</html>
