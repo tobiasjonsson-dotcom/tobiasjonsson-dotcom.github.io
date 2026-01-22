@@ -24,17 +24,16 @@
       background-color: #000;
     }
     
-    body.shake {
-      animation: hit-shake 0.15s steps(2) forwards;
+    body.glitch {
+      animation: glitch-filter 0.3s steps(4) forwards;
     }
     
-    @keyframes hit-shake {
-      0%   { transform: translate(0, 0); }
-      20%  { transform: translate(-5px, 4px); }
-      40%  { transform: translate(4px, -5px); }
-      60%  { transform: translate(-3px, -4px); }
-      80%  { transform: translate(3px, 2px); }
-      100% { transform: translate(0, 0); }
+    @keyframes glitch-filter {
+      0%   { filter: hue-rotate(0deg) brightness(1) contrast(1); }
+      25%  { filter: hue-rotate(90deg) brightness(1.2) contrast(1.1); }
+      50%  { filter: hue-rotate(180deg) brightness(0.8) contrast(1.2); }
+      75%  { filter: hue-rotate(270deg) brightness(1.1) contrast(0.9); }
+      100% { filter: hue-rotate(0deg) brightness(1) contrast(1); }
     }
     
     #upload-container {
@@ -78,71 +77,38 @@
       font-size: 14px;
     }
     
-    .placed-image {
+    .image-layer {
       position: fixed;
+      pointer-events: none;
+      z-index: 2;
+    }
+    
+    .image-layer img {
+      display: block;
+    }
+    
+    .viewport-image {
       left: 0;
       top: 0;
       width: 100vw;
       height: 100vh;
-      pointer-events: none;
-      image-rendering: auto;
-      visibility: hidden;
-      z-index: 2;
     }
     
-    .placed-image.loaded {
-      visibility: visible;
-    }
-    
-    .placed-image img {
-      display: block;
+    .viewport-image img {
       width: 100%;
       height: 100%;
       object-fit: cover;
     }
     
     .cursor-image {
-      position: absolute;
-      pointer-events: none;
-      image-rendering: auto;
-      visibility: hidden;
-      z-index: 2;
-    }
-    
-    .cursor-image.loaded {
-      visibility: visible;
+      width: 200vw;
+      height: 200vh;
     }
     
     .cursor-image img {
-      display: block;
-      width: 200vw;
-      height: 200vh;
-      object-fit: contain;
-      max-width: none;
-      max-height: none;
-    }
-    
-    .corner-image {
-      position: absolute;
-      left: 0;
-      top: 0;
-      pointer-events: none;
-      image-rendering: auto;
-      visibility: hidden;
-      width: 100vw;
-      height: 100vh;
-      z-index: 1;
-    }
-    
-    .corner-image.loaded {
-      visibility: visible;
-    }
-    
-    .corner-image img {
-      display: block;
       width: 100%;
       height: 100%;
-      object-fit: cover;
+      object-fit: contain;
     }
     
     #flash-overlay {
@@ -190,12 +156,8 @@
   const body = document.body;
   
   // Image configuration
-  const imagesFolder = "images/";
-  const viewportFolder = "viewport/";
-  const viewportImageFiles = ["1.png", "2.png", "3.png", "4.png", "5.png", "6.png", "7.png", "8.png", "9.png", "10.png"];
-  const imagesFolderFiles = ["1.png", "2.png", "3.png", "4.png", "5.png", "6.png", "7.png", "8.png", "9.png", "10.png"];
-  // Corner → viewport file: top-left 1, top-right 2, bottom-left 3, bottom-right 4
-  const cornerViewportFiles = { tl: "1.png", tr: "2.png", bl: "3.png", br: "4.png" };
+  const viewportImageFiles = ["view1.png", "view2.png", "view3.png", "view4.png", "view5.png", "view6.png", "view7.png", "view8.png", "view9.png", "view10.png"];
+  const imagesFolderFiles = ["img1.png", "img2.png", "img3.png", "img4.png", "img5.png", "img6.png", "img7.png", "img8.png", "img9.png", "img10.png"];
   
   // Track available viewport images (no repeats until all are used)
   let availableViewportImages = [...viewportImageFiles];
@@ -253,83 +215,53 @@
   function placeImage(x, y) {
     let imageFile;
     let imageUrl;
-    let isViewportImage = false;
+    let isViewImage = false;
     
-    // Phase 1: Place all viewport images first (no repeats, covering whole viewport)
+    // Phase 1: Place all view images first (view1-10, at cursor position, no repeats)
     if (!allViewportImagesPlaced) {
       imageFile = getNextViewportImage();
       if (imageFile) {
-        imageUrl = viewportFolder + imageFile;
-        isViewportImage = true;
+        imageUrl = imageFile;
+        isViewImage = true;
       } else {
-        // All viewport images placed, switch to images folder
+        // All view images placed, switch to img images
         allViewportImagesPlaced = true;
         imageFile = getRandomImagesFolderImage();
-        imageUrl = imagesFolder + imageFile;
-        isViewportImage = false;
+        imageUrl = imageFile;
+        isViewImage = false;
       }
     } else {
-      // Phase 2: Place images from images folder (random, at cursor position)
+      // Phase 2: Place img images (img1-10, covering viewport, random)
       imageFile = getRandomImagesFolderImage();
-      imageUrl = imagesFolder + imageFile;
-      isViewportImage = false;
+      imageUrl = imageFile;
+      isViewImage = false;
     }
     
     const container = document.createElement('div');
-    container.className = isViewportImage ? 'placed-image' : 'cursor-image';
+    // view1-10 images go at cursor, img1-10 images cover viewport
+    container.className = 'image-layer ' + (isViewImage ? 'cursor-image' : 'viewport-image');
     
     const img = document.createElement('img');
     img.src = imageUrl;
     img.alt = imageFile;
     
-    img.onload = function() {
-      if (!isViewportImage) {
-        // Position cursor image at click coordinates
-        // Images are scaled to 200% viewport (200vw x 200vh)
-        // Center the image on the click point
-        const viewportWidth = window.innerWidth;
-        const viewportHeight = window.innerHeight;
-        
-        container.style.left = (x - viewportWidth) + 'px';
-        container.style.top = (y - viewportHeight) + 'px';
-      }
-      // Show the image once it's loaded
-      container.classList.add('loaded');
-    };
+    if (isViewImage) {
+      // View images: positioned at click point, centered (200vw x 200vh, so offset by 100vw and 100vh)
+      const viewportWidth = window.innerWidth;
+      const viewportHeight = window.innerHeight;
+      container.style.left = (x - viewportWidth) + 'px';
+      container.style.top = (y - viewportHeight) + 'px';
+      // Add random rotation
+      const randomRotation = (Math.random() * 360) - 180; // Random angle between -180 and 180 degrees
+      container.style.transform = `rotate(${randomRotation}deg)`;
+    } else {
+      // Img images: covers entire viewport
+      container.style.left = '0';
+      container.style.top = '0';
+    }
     
     img.onerror = function() {
       console.error('Failed to load image:', imageUrl);
-      container.remove();
-    };
-    
-    container.appendChild(img);
-    body.appendChild(container);
-  }
-  
-  function getCorner(x, y) {
-    const midX = window.innerWidth / 2;
-    const midY = window.innerHeight / 2;
-    if (y < midY) return x < midX ? 'tl' : 'tr';
-    return x < midX ? 'bl' : 'br';
-  }
-  
-  function placeCornerImage(corner) {
-    const file = cornerViewportFiles[corner];
-    const imageUrl = viewportFolder + file;
-    
-    const container = document.createElement('div');
-    container.className = 'corner-image ' + corner;
-    
-    const img = document.createElement('img');
-    img.src = imageUrl;
-    img.alt = file;
-    
-    img.onload = function() {
-      container.classList.add('loaded');
-    };
-    
-    img.onerror = function() {
-      console.error('Failed to load corner image:', imageUrl);
       container.remove();
     };
     
@@ -386,10 +318,10 @@
     flashOverlay.classList.add('flash');
     setTimeout(function() { flashOverlay.classList.remove('flash'); }, 400);
     
-    body.classList.remove('shake');
+    body.classList.remove('glitch');
     void body.offsetWidth;
-    body.classList.add('shake');
-    setTimeout(function() { body.classList.remove('shake'); }, 150);
+    body.classList.add('glitch');
+    setTimeout(function() { body.classList.remove('glitch'); }, 300);
   }
   
   // Place images on click after background is uploaded
@@ -407,7 +339,6 @@
     triggerFlash();
     const x = e.clientX, y = e.clientY;
     placeImage(x, y);
-    placeCornerImage(getCorner(x, y));
   });
 </script>
 
